@@ -1,0 +1,35 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# --- PyInstaller build output ---
+build/
+dist/
+
+# --- Index data (embeddings, metadata, thumbnails) ---
+data/
+*.npy
+
+# --- Logs ---
+*.log
+*_log.txt
+
+# --- Local settings (copy from *.example.json) ---
+config.json
+settings.json
+
+# --- Model cache ---
+models/
+
+# --- Editor / tools ---
+.claude/
+.vscode/
+.idea/
+
+# --- OS ---
+Thumbs.db
+desktop.ini
+.DS_Store

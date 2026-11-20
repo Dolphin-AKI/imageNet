@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>画像検索</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66;
+    --line: #e2e2dd; --accent: #2f6fd6; --accent-text: #fff; --sel: #e3ecfb;
+    --hh: 53px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161615; --panel: #1f1f1d; --text: #ecece8; --muted: #9a9a93;
+            --line: #33332f; --accent: #5b93ee; --accent-text: #0b0b0a; --sel: #26334a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.5 system-ui, "Segoe UI", "Yu Gothic UI", sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--panel);
+           border-bottom: 1px solid var(--line); padding: 10px 16px;
+           display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  header h1 { font-size: 15px; margin: 0 8px 0 0; font-weight: 600; }
+  input, select, button { font: inherit; color: var(--text); background: var(--bg);
+           border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; }
+  #q { flex: 1 1 260px; min-width: 0; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  button[aria-pressed="true"] { background: var(--sel); border-color: var(--accent); }
+  #status { color: var(--muted); font-size: 12px; margin-left: auto; }
+
+  .layout { display: flex; align-items: flex-start; }
+  #side { position: sticky; top: var(--hh); height: calc(100vh - var(--hh)); width: 260px; flex: none;
+          overflow: auto; background: var(--panel); border-right: 1px solid var(--line); padding: 8px 4px; }
+  body.noside #side { display: none; }
+  @media (max-width: 720px) {
+    #side { position: fixed; left: 0; z-index: 4; width: min(300px, 85vw); box-shadow: 4px 0 16px rgba(0,0,0,.25); }
+  }
+  .tree, .tree ul { list-style: none; margin: 0; padding: 0; }
+  .tree ul { padding-left: 14px; }
+  .node { display: flex; align-items: center; gap: 2px; padding: 2px 6px 2px 2px; border-radius: 5px;
+          cursor: pointer; white-space: nowrap; }
+  .node:hover { background: var(--bg); }
+  .node.sel { background: var(--sel); }
+  .node .tg { width: 18px; flex: none; text-align: center; color: var(--muted); font-size: 11px; }
+  .node .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .node .ct { color: var(--muted); font-size: 11px; }
+  .node.root .nm { font-weight: 600; }
+  li.closed > ul { display: none; }
+
+  main { flex: 1; min-width: 0; padding: 16px; }
+  #focus { display: none; gap: 16px; margin-bottom: 16px; background: var(--panel);
+           border: 1px solid var(--line); border-radius: 10px; padding: 12px; flex-wrap: wrap; }
+  #focus.on { display: flex; }
+  #focus img { max-height: 52vh; max-width: 100%; border-radius: 6px; background: var(--bg); }
+  #focus .meta { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  #focus .path { word-break: break-all; color: var(--muted); font-size: 12px; }
+  #focus .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  h2 { font-size: 13px; color: var(--muted); font-weight: 500; margin: 0 0 8px; word-break: break-all; }
+  #chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  #chips button { font-size: 12px; padding: 3px 10px; border-radius: 999px; background: var(--panel); }
+  #grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .cell { position: relative; aspect-ratio: 1; background: var(--panel); border: 1px solid var(--line);
+          border-radius: 8px; overflow: hidden; cursor: pointer; }
+  .cell:hover { outline: 2px solid var(--accent); }
+  .cell { user-select: none; }
+  .cell .ck { position: absolute; left: 5px; top: 5px; width: 22px; height: 22px; border-radius: 50%;
+              border: 2px solid #fff; background: rgba(0,0,0,.35); color: #fff; font-size: 13px;
+              line-height: 18px; text-align: center; display: none; box-shadow: 0 0 3px rgba(0,0,0,.4); }
+  .cell:hover .ck, body.selecting .cell .ck { display: block; }
+  .cell.picked { outline: 3px solid var(--accent); outline-offset: -3px; }
+  .cell.picked .ck { display: block; background: var(--accent); border-color: var(--accent); }
+  .cell.picked .ck::after { content: "✓"; }
+  .cell.picked img { opacity: .85; }
+  #selbar { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 6;
+            display: none; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center;
+            background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px;
+            box-shadow: 0 6px 24px rgba(0,0,0,.25); width: max-content; max-width: calc(100vw - 32px); }
+  body.selecting #selbar { display: flex; }
+  #selcount { font-weight: 600; }
+  #selname { width: 14em; min-width: 0; }
+  #selerr { color: #d9534f; font-size: 12px; }
+  #selerr:empty { display: none; }
+  .cell img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .cell .score { position: absolute; right: 4px; bottom: 4px; font-size: 11px; padding: 0 5px;
+                 border-radius: 4px; background: rgba(0,0,0,.6); color: #fff; }
+  #more { color: var(--muted); font-size: 12px; text-align: center; padding: 20px 0 32px; min-height: 60px; }
+  .empty { color: var(--muted); padding: 40px 0; text-align: center; grid-column: 1 / -1; }
+
+  dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line);
+           border-radius: 10px; width: min(640px, calc(100vw - 32px)); padding: 16px; }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  dialog h3 { margin: 0 0 10px; font-size: 15px; }
+  #roots { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  #roots li { display: flex; gap: 8px; align-items: center; border: 1px solid var(--line);
+              border-radius: 6px; padding: 6px 8px; }
+  #roots .p { flex: 1; min-width: 0; word-break: break-all; }
+  #roots .c { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .row input { flex: 1; min-width: 0; }
+  .row.end { justify-content: flex-end; margin: 8px 0 0; }
+  #err { color: #d9534f; font-size: 12px; min-height: 1em; margin-bottom: 6px; }
+  #jobstate { color: var(--muted); font-size: 12px; }
+  #joblog { margin: 0; font-size: 12px; color: var(--muted); white-space: pre-wrap; max-height: 9em;
+            overflow: auto; background: var(--bg); border-radius: 6px; padding: 6px 8px; }
+  #joblog:empty { display: none; }
+
+  /* labels */
+  #fnames { display: flex; flex-wrap: wrap; gap: 6px; }
+  #fnames:empty { display: none; }
+  .tag { display: inline-flex; align-items: center; font-size: 12px; padding: 1px 2px 1px 10px;
+         border-radius: 999px; background: var(--sel); border: 1px solid var(--accent); }
+  .tag .nm { cursor: pointer; }
+  .tag button { border: 0; background: none; padding: 0 7px; font-size: 12px; color: var(--muted); }
+  #cform { display: flex; gap: 6px; flex-wrap: wrap; }
+  #cname { flex: 0 1 16em; min-width: 0; }
+  .hint { color: var(--muted); font-size: 12px; margin: 0 0 10px; }
+  #cerr { color: #d9534f; margin: 0; }
+  #cerr:empty { display: none; }
+  #clist { display: flex; flex-direction: column; gap: 6px; max-height: 60vh; overflow: auto; margin-bottom: 4px; }
+  .crow { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+  .crow .hd { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .crow .n { flex: 1; min-width: 0; font-weight: 600; cursor: pointer; word-break: break-all; }
+  .crow .n:hover { color: var(--accent); }
+  .crow .c { color: var(--muted); font-size: 12px; }
+  .crow .hd button { font-size: 12px; padding: 2px 8px; }
+  .crow .th { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .crow .th div { position: relative; width: 60px; height: 60px; }
+  .crow .th img { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; cursor: pointer;
+                  background: var(--bg); display: block; }
+  .crow .th button { position: absolute; top: -5px; right: -5px; padding: 0 6px; font-size: 11px;
+                     line-height: 18px; border-radius: 999px; display: none; }
+  .crow .th div:hover button, .crow .th div:focus-within button { display: block; }
+</style>
+</head>
+<body>
+<header id="hdr">
+  <button id="sidetg" aria-pressed="true" title="フォルダツリーの表示切替">ツリー</button>
+  <h1>画像検索</h1>
+  <input id="q" type="search" placeholder="例: 夕焼けの海、赤い車、立ちポーズ" autofocus>
+  <select id="folder"><option value="">すべてのフォルダ</option></select>
+  <button class="primary" id="go">検索</button>
+  <button id="rand">ランダム</button>
+  <button id="manage">フォルダ管理</button>
+  <button id="cmanage">ラベル</button>
+  <span id="status"></span>
+</header>
+<dialog id="dlg">
+  <h3>検索対象フォルダ</h3>
+  <ul id="roots"></ul>
+  <div class="row">
+    <input id="newroot" placeholder="フォルダのパス（例: D:\Pictures または \\NAS\share\images）">
+    <button class="primary" id="addroot">追加</button>
+  </div>
+  <div id="err"></div>
+  <div class="row">
+    <button id="reindex">インデックス更新</button>
+    <span id="jobstate"></span>
+  </div>
+  <pre id="joblog"></pre>
+  <div class="row end"><button id="close">閉じる</button></div>
+</dialog>
+<dialog id="cdlg">
+  <h3>ラベル</h3>
+  <p class="hint">画像を開いて「ラベルを付ける」で例画像を登録します。一覧の画像左上の丸（または Ctrl+クリック、Shift+クリックで範囲）で複数選んでまとめて付けることもできます。検索語にラベル名が含まれると、例画像に似た画像が上位に来ます（例:「ラベル名 水着」）。例画像は種類の違うものを数枚入れると安定します。</p>
+  <div id="clist"></div>
+  <div class="row end"><button id="cclose">閉じる</button></div>
+</dialog>
+<datalist id="cnames"></datalist>
+<div id="selbar">
+  <span id="selcount"></span>
+  <input id="selname" list="cnames" placeholder="ラベル名" autocomplete="off">
+  <button class="primary" id="seladd">まとめてラベルを付ける</button>
+  <button id="selall">表示中をすべて選択</button>
+  <button id="selclear">選択解除</button>
+  <span id="selerr"></span>
+</div>
+<div class="layout">
+  <aside id="side"><ul class="tree" id="tree"></ul></aside>
+  <main>
+    <section id="focus">
+      <img id="fimg" alt="">
+      <div class="meta">
+        <div><strong>選択中の画像</strong></div>
+        <div class="path" id="fpath"></div>
+        <div class="actions">
+          <button id="open">原寸で開く</button>
+          <button id="opendir">このフォルダを開く</button>
+          <button id="reveal">エクスプローラーで表示</button>
+        </div>
+        <div id="fnames"></div>
+        <div id="cform">
+          <input id="cname" list="cnames" placeholder="ラベル名（キャラ名など）" autocomplete="off">
+          <button id="cadd">ラベルを付ける</button>
+        </div>
+        <div id="cerr" class="hint"></div>
+      </div>
+    </section>
+    <h2 id="title"></h2>
+    <div id="chips"></div>
+    <div id="grid"></div>
+    <div id="more"></div>
+  </main>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const grid = $('#grid'), statusEl = $('#status'), moreEl = $('#more');
+const PAGE = 60;
+let focusItem = null;
+let treeData = [], nodeByKey = {};
+let concepts = [], namesById = {};
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+const opened = new Set(store.get('treeOpen', []));
+
+async function api(url) { const r = await fetch(url); return r.json(); }
+async function post(url, body) {
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                               body: JSON.stringify(body) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || `エラー (${r.status})`);
+  return d;
+}
+function folderParam() { const f = $('#folder').value; return f ? '&folder=' + encodeURIComponent(f) : ''; }
+
+// keep sidebar top aligned with the (wrapping) header
+new ResizeObserver(() => document.documentElement.style.setProperty('--hh', $('#hdr').offsetHeight + 'px'))
+  .observe($('#hdr'));
+
+// ---------- paged grid with infinite scroll ----------
+let feed = { gen: 0, loader: null, offset: 0, hasMore: false, loading: false };
+
+function startFeed(loader) {
+  feed = { gen: feed.gen + 1, loader, offset: 0, hasMore: true, loading: false };
+  grid.innerHTML = '';
+  moreEl.textContent = '';
+  return loadMore();
+}
+
+async function loadMore() {
+  if (feed.loading || !feed.hasMore) return;
+  const f = feed;
+  f.loading = true;
+  moreEl.textContent = '読み込み中…';
+  let d;
+  try { d = await f.loader(f.offset, PAGE); }
+  catch (e) { if (f === feed) { f.loading = false; moreEl.textContent = '読み込みに失敗しました'; } return; }
+  if (f !== feed) return;               // a newer view replaced this one
+  appendCells(d.results);
+  f.offset += d.results.length;
+  f.hasMore = d.has_more && d.results.length > 0;
+  f.loading = false;
+  if (!f.offset) grid.innerHTML = '<div class="empty">該当なし</div>';
+  moreEl.textContent = f.hasMore ? '' : (f.offset ? `${f.offset} 件をすべて表示しました` : '');
+  // sentinel may still be on screen (tall window): keep filling
+  if (f.hasMore && moreEl.getBoundingClientRect().top < innerHeight + 600) loadMore();
+  return d;
+}
+
+new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) loadMore(); },
+                         { rootMargin: '600px 0px' }).observe(moreEl);
+
+function appendCells(results) {
+  const frag = document.createDocumentFragment();
+  for (const r of results) {
+    const c = document.createElement('div');
+    c.className = 'cell' + (picked.has(r.id) ? ' picked' : '');
+    c.dataset.id = r.id;
+    c.title = r.root + ' › ' + r.rel;
+    c.innerHTML = `<img loading="lazy" src="/thumb/${r.id}" alt=""><span class="ck" title="選択"></span>` +
+      (r.score != null ? `<span class="score">${r.score.toFixed(3)}</span>` : '');
+    c.onclick = e => cellClick(e, c);
+    frag.appendChild(c);
+  }
+  grid.appendChild(frag);
+}
+
+// ---------- multi-select ----------
+const picked = new Set();
+let lastPick = null;
+
+function setPick(cell, on) {
+  const id = +cell.dataset.id;
+  on ? picked.add(id) : picked.delete(id);
+  cell.classList.toggle('picked', on);
+}
+function updateSel() {
+  document.body.classList.toggle('selecting', picked.size > 0);
+  $('#selcount').textContent = `${picked.size} 枚選択中`;
+}
+function clearPick() {
+  picked.clear();
+  lastPick = null;
+  grid.querySelectorAll('.cell.picked').forEach(c => c.classList.remove('picked'));
+  $('#selerr').textContent = '';
+  updateSel();
+}
+function cellClick(e, c) {
+  const cells = [...grid.querySelectorAll('.cell')];
+  const a = lastPick ? cells.indexOf(lastPick) : -1;
+  if (e.shiftKey && a >= 0) {                       // range select
+    const b = cells.indexOf(c);
+    for (let i = Math.min(a, b); i <= Math.max(a, b); i++) setPick(cells[i], true);
+  } else if (picked.size || e.ctrlKey || e.metaKey || e.target.classList.contains('ck')) {
+    setPick(c, !c.classList.contains('picked'));
+  } else {
+    return go({ sim: +c.dataset.id });
+  }
+  lastPick = c;
+  updateSel();
+}
+$('#selall').onclick = () => { grid.querySelectorAll('.cell').forEach(c => setPick(c, true)); updateSel(); };
+$('#selclear').onclick = clearPick;
+$('#seladd').onclick = async () => {
+  const name = $('#selname').value.trim();
+  $('#selerr').textContent = '';
+  if (!name) { $('#selerr').textContent = 'ラベル名を入力してください'; return; }
+  const n = picked.size;
+  if (await conceptOp('/api/concepts/add', { name, ids: [...picked] }, $('#selerr'))) {
+    $('#selname').value = '';
+    clearPick();
+    statusEl.textContent = `${n} 枚に「${name}」を付けました`;
+  }
+};
+$('#selname').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) $('#seladd').click(); };
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && picked.size && !document.querySelector('dialog[open]')) clearPick();
+});
+
+function showFocus(q) {
+  focusItem = q;
+  if (!q) { $('#focus').classList.remove('on'); return; }
+  $('#fimg').src = '/image/' + q.id;
+  $('#fpath').textContent = q.root.replace(/[\\/]+$/, '') + '\\' + q.rel.replaceAll('/', '\\') + `  (${q.w}×${q.h})`;
+  $('#focus').classList.add('on');
+  $('#cerr').textContent = '';
+  renderFocusNames();
+}
+
+function setChips(node) {
+  const box = $('#chips');
+  box.innerHTML = '';
+  if (!node) return;
+  for (const c of node.children) {
+    const b = document.createElement('button');
+    b.textContent = `${c.name}（${c.total}）`;
+    b.onclick = () => go({ dir: c.key });
+    box.appendChild(b);
+  }
+}
+
+// ---------- routing ----------
+async function run() {
+  const p = new URLSearchParams(location.hash.slice(1));
+  const sel = $('#folder');
+  if (p.has('folder') && [...sel.options].some(o => o.value === p.get('folder'))) sel.value = p.get('folder');
+  const t0 = performance.now();
+  setChips(null);
+  markTree(null);
+
+  if (p.has('sim')) {
+    const id = p.get('sim');
+    let first = true;
+    await startFeed(async (o, n) => {
+      const d = await api(`/api/similar/${id}?offset=${o}&limit=${n}${folderParam()}`);
+      if (first) { first = false; showFocus(d.query); markTree(d.query.dir, false); }
+      return d;
+    });
+    $('#title').textContent = '関連が強い画像（下へスクロールでさらに表示）';
+    window.scrollTo({ top: 0 });
+  } else if (p.has('dir')) {
+    const key = p.get('dir'), node = nodeByKey[key];
+    showFocus(null);
+    markTree(key, true);
+    setChips(node);
+    $('#title').textContent = node
+      ? `${pathLabel(key)} — 直下 ${node.count} 枚` + (node.children.length ? ` / サブフォルダ ${node.children.length}` : '')
+      : pathLabel(key);
+    await startFeed((o, n) => api(`/api/browse?dir=${encodeURIComponent(key)}&offset=${o}&limit=${n}`));
+    if (node && !node.count && node.children.length) grid.innerHTML = '<div class="empty">このフォルダ直下には画像がありません。サブフォルダを選んでください。</div>';
+    window.scrollTo({ top: 0 });
+  } else if (p.get('q')) {
+    const q = p.get('q');
+    $('#q').value = q;
+    showFocus(null);
+    $('#title').textContent = `「${q}」の検索結果`;
+    await startFeed(async (o, n) => {
+      const d = await api(`/api/search?offset=${o}&limit=${n}&q=${encodeURIComponent(q)}${folderParam()}`);
+      if (!o && d.concepts && d.concepts.length)
+        $('#title').textContent = `「${q}」の検索結果 — ラベル: ` +
+          d.concepts.map(c => `${c.name}（例画像 ${c.count} 枚）`).join('、');
+      return d;
+    });
+  } else {
+    showFocus(null);
+    const seed = p.get('seed') || Math.floor(Math.random() * 1e9);
+    $('#title').textContent = 'ランダム表示（画像をクリックすると関連画像を表示）';
+    await startFeed((o, n) => api(`/api/random?seed=${seed}&offset=${o}&limit=${n}${folderParam()}`));
+  }
+  statusEl.textContent = `${Math.round(performance.now() - t0)} ms`;
+}
+
+function go(o) {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(o)) if (v !== '' && v != null) p.set(k, v);
+  if ($('#folder').value && !o.dir) p.set('folder', $('#folder').value);
+  p.set('_', Date.now() % 100000);  // force hashchange on repeat
+  location.hash = p.toString();
+}
+
+$('#go').onclick = () => go({ q: $('#q').value.trim() });
+$('#q').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) $('#go').click(); };
+$('#rand').onclick = () => go({ seed: Math.floor(Math.random() * 1e9) });
+$('#folder').onchange = () => {
+  const p = new URLSearchParams(location.hash.slice(1));
+  p.delete('_'); p.delete('folder');
+  if (p.has('dir')) p.delete('dir');
+  go(Object.fromEntries(p));
+};
+$('#open').onclick = () => window.open('/image/' + focusItem.id, '_blank');
+$('#opendir').onclick = () => go({ dir: focusItem.dir });
+$('#reveal').onclick = () => fetch('/api/reveal/' + focusItem.id, { method: 'POST' });
+window.addEventListener('hashchange', run);
+
+// ---------- folder tree ----------
+function pathLabel(key) {
+  const [r, ...rest] = key.split('/');
+  const root = nodeByKey[r];
+  return (root ? root.name.replace(/[\\/]+$/, '') : r) + (rest.length ? '\\' + rest.join('\\') : '');
+}
+
+function renderTree() {
+  nodeByKey = {};
+  const ul = $('#tree');
+  ul.innerHTML = '';
+  const build = (node, parent, isRoot) => {
+    nodeByKey[node.key] = node;
+    const li = document.createElement('li');
+    li.dataset.key = node.key;
+    const has = node.children.length > 0;
+    if (has && !opened.has(node.key)) li.classList.add('closed');
+    const row = document.createElement('div');
+    row.className = 'node' + (isRoot ? ' root' : '');
+    row.innerHTML = `<span class="tg">${has ? (li.classList.contains('closed') ? '▸' : '▾') : ''}</span>` +
+                    `<span class="nm"></span><span class="ct">${node.total}</span>`;
+    row.querySelector('.nm').textContent = isRoot ? (node.name.split(/[\\/]/).filter(Boolean).pop() || node.name) : node.name;
+    row.title = isRoot ? node.name : pathLabel(node.key);
+    row.querySelector('.tg').onclick = e => { e.stopPropagation(); if (has) toggle(li); };
+    row.onclick = () => { if (has && li.classList.contains('closed')) toggle(li); if (innerWidth <= 720) setSide(false); go({ dir: node.key }); };
+    li.appendChild(row);
+    if (has) {
+      const sub = document.createElement('ul');
+      node.children.forEach(c => build(c, sub, false));
+      li.appendChild(sub);
+    }
+    parent.appendChild(li);
+  };
+  treeData.forEach(r => build(r, ul, true));
+  if (!treeData.length) ul.innerHTML = '<li class="empty">フォルダ未登録</li>';
+}
+
+function toggle(li, open) {
+  const willOpen = open ?? li.classList.contains('closed');
+  li.classList.toggle('closed', !willOpen);
+  const tg = li.querySelector(':scope > .node .tg');
+  if (tg.textContent) tg.textContent = willOpen ? '▾' : '▸';
+  willOpen ? opened.add(li.dataset.key) : opened.delete(li.dataset.key);
+  store.set('treeOpen', [...opened]);
+}
+
+function markTree(key, scroll = true) {
+  document.querySelectorAll('.node.sel').forEach(n => n.classList.remove('sel'));
+  if (!key) return;
+  const li = document.querySelector(`#tree li[data-key="${CSS.escape(key)}"]`);
+  if (!li) return;
+  for (let a = li.parentElement.closest('li'); a; a = a.parentElement.closest('li')) toggle(a, true);
+  const row = li.querySelector(':scope > .node');
+  row.classList.add('sel');
+  row.scrollIntoView({ block: 'nearest' });
+}
+
+function setSide(on) {
+  document.body.classList.toggle('noside', !on);
+  $('#sidetg').setAttribute('aria-pressed', on);
+  store.set('side', on);
+}
+$('#sidetg').onclick = () => setSide(document.body.classList.contains('noside'));
+setSide(store.get('side', innerWidth > 720));
+
+// ---------- labels ----------
+function setConcepts(d) {
+  concepts = d.concepts;
+  namesById = {};
+  for (const c of concepts) for (const id of c.ids) (namesById[id] ||= []).push(c.name);
+  const dl = $('#cnames');
+  dl.innerHTML = '';
+  for (const c of concepts) dl.appendChild(new Option(c.name));
+  renderFocusNames();
+  if ($('#cdlg').open) renderConcepts();
+}
+
+async function conceptOp(url, body, errEl) {
+  try { setConcepts(await post(url, body)); return true; }
+  catch (e) { if (errEl) errEl.textContent = e.message; else alert(e.message); return false; }
+}
+
+function renderFocusNames() {
+  const box = $('#fnames');
+  box.innerHTML = '';
+  if (!focusItem) return;
+  for (const n of namesById[focusItem.id] || []) {
+    const t = document.createElement('span');
+    t.className = 'tag';
+    t.innerHTML = '<span class="nm" title="このラベルで検索"></span><button title="この画像を例画像から外す">×</button>';
+    t.querySelector('.nm').textContent = n;
+    t.querySelector('.nm').onclick = () => go({ q: n });
+    t.querySelector('button').onclick = () => conceptOp('/api/concepts/remove', { name: n, id: focusItem.id }, $('#cerr'));
+    box.appendChild(t);
+  }
+}
+
+function renderConcepts() {
+  const box = $('#clist');
+  box.innerHTML = '';
+  if (!concepts.length) {
+    box.innerHTML = '<div class="empty">まだ登録がありません。画像を選んで「ラベルを付ける」から登録できます。</div>';
+    return;
+  }
+  for (const c of concepts) {
+    const row = document.createElement('div');
+    row.className = 'crow';
+    row.innerHTML = '<div class="hd"><span class="n" title="このラベルで検索"></span><span class="c"></span>' +
+                    '<button class="ren">名前変更</button><button class="del">削除</button></div><div class="th"></div>';
+    row.querySelector('.n').textContent = c.name;
+    row.querySelector('.n').onclick = () => { $('#cdlg').close(); go({ q: c.name }); };
+    const miss = c.total - c.ids.length;
+    row.querySelector('.c').textContent = `${c.ids.length} 枚` + (miss ? `（インデックス外 ${miss}）` : '');
+    row.querySelector('.ren').onclick = () => {
+      const nw = prompt('新しいラベル名（既存のラベル名にすると統合されます）', c.name);
+      if (nw && nw.trim() && nw.trim() !== c.name) conceptOp('/api/concepts/rename', { name: c.name, new: nw });
+    };
+    row.querySelector('.del').onclick = () => {
+      if (confirm(`「${c.name}」を削除しますか？（画像ファイル自体は削除されません）`))
+        conceptOp('/api/concepts/delete', { name: c.name });
+    };
+    const th = row.querySelector('.th');
+    for (const id of c.ids) {
+      const d = document.createElement('div');
+      d.innerHTML = `<img loading="lazy" src="/thumb/${id}" alt="" title="この画像の関連画像を表示"><button title="例画像から外す">×</button>`;
+      d.querySelector('img').onclick = () => { $('#cdlg').close(); go({ sim: id }); };
+      d.querySelector('button').onclick = () => conceptOp('/api/concepts/remove', { name: c.name, id });
+      th.appendChild(d);
+    }
+    box.appendChild(row);
+  }
+}
+
+$('#cadd').onclick = async () => {
+  const name = $('#cname').value.trim();
+  $('#cerr').textContent = '';
+  if (!focusItem) return;
+  if (!name) { $('#cerr').textContent = 'ラベル名を入力してください'; return; }
+  if (await conceptOp('/api/concepts/add', { name, id: focusItem.id }, $('#cerr'))) $('#cname').value = '';
+};
+$('#cname').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) $('#cadd').click(); };
+$('#cmanage').onclick = async () => { $('#cdlg').showModal(); setConcepts(await api('/api/concepts')); };
+$('#cclose').onclick = () => $('#cdlg').close();
+
+// ---------- folders ----------
+async function loadInfo() {
+  const [d, t, c] = await Promise.all([api('/api/info'), api('/api/tree'), api('/api/concepts')]);
+  setConcepts(c);
+  treeData = t.roots;
+  renderTree();
+  const sel = $('#folder'), cur = sel.value;
+  sel.innerHTML = '<option value="">すべてのフォルダ</option>';
+  for (const r of d.roots) {
+    const g = document.createElement('optgroup');
+    g.label = r.path;
+    g.appendChild(new Option(`${r.name}（全体・${r.count}枚）`, r.key));
+    for (const s of r.subs) g.appendChild(new Option('　' + s, `${r.key}/${s}`));
+    sel.appendChild(g);
+  }
+  sel.value = [...sel.options].some(o => o.value === cur) ? cur : '';
+  const ul = $('#roots');
+  ul.innerHTML = '';
+  d.roots.forEach((r, n) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="p"></span><span class="c">${r.count} 枚</span><button>削除</button>`;
+    li.querySelector('.p').textContent = r.path;
+    li.querySelector('button').onclick = async () => {
+      if (!confirm(`「${r.path}」を検索対象から外しますか？（画像ファイル自体は削除されません）`)) return;
+      await fetch('/api/roots/' + n, { method: 'DELETE' });
+      pollJob();
+    };
+    ul.appendChild(li);
+  });
+  if (!d.roots.length) ul.innerHTML = '<li><span class="p">フォルダが登録されていません</span></li>';
+  statusEl.textContent = `${d.count} 枚`;
+  return d;
+}
+
+let polling = false;
+async function pollJob() {
+  if (polling) return;
+  polling = true;
+  let ran = false;
+  try {
+    while (true) {
+      const j = await api('/api/reindex');
+      if (j.running) ran = true;
+      $('#joblog').textContent = j.log.join('\n');
+      $('#jobstate').textContent = j.running ? '更新中…' : (j.error ? 'エラー: ' + j.error : '');
+      $('#reindex').disabled = j.running;
+      if (!j.running) break;
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  } finally { polling = false; }
+  if (ran) clearPick();  // image ids change after reindex
+  await loadInfo();
+}
+
+$('#manage').onclick = () => { $('#err').textContent = ''; $('#dlg').showModal(); loadInfo(); pollJob(); };
+$('#close').onclick = () => { $('#dlg').close(); run(); };
+$('#addroot').onclick = async () => {
+  $('#err').textContent = '';
+  const r = await fetch('/api/roots', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ path: $('#newroot').value }) });
+  const d = await r.json();
+  if (!r.ok) { $('#err').textContent = d.error; return; }
+  $('#newroot').value = '';
+  await loadInfo();
+  pollJob();
+};
+$('#newroot').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) $('#addroot').click(); };
+$('#reindex').onclick = async () => { await fetch('/api/reindex', { method: 'POST' }); pollJob(); };
+
+loadInfo().then(run);
+</script>
+</body>
+</html>

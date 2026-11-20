@@ -1,0 +1,6 @@
+{
+  "data_dir": "data",
+  "model_dir": "",
+  "port": 5055,
+  "concept_weight": 0.6
+}

@@ -15,7 +15,40 @@ from common import (CONCEPT_WEIGHT, CONCEPTS_FILE, DEVICE, PORT, RES_DIR, THUMB_
 from index import build_index, load_existing
 
 STATIC_DIR = RES_DIR / "static"
+HOST = "127.0.0.1"  # loopback only; never bind to 0.0.0.0
 app = Flask(__name__, static_folder=str(STATIC_DIR))
+
+# ---------- localhost-only guard ----------
+LOOPBACK_ADDRS = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
+ALLOWED_HOSTS = {f"{h}:{PORT}" for h in ("127.0.0.1", "localhost", "[::1]")}
+ALLOWED_ORIGINS = {f"http://{h}" for h in ALLOWED_HOSTS}
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+@app.before_request
+def localhost_only():
+    # 1. connections from other machines (defense in depth; the socket is bound to loopback)
+    if request.remote_addr not in LOOPBACK_ADDRS:
+        abort(403)
+    # 2. DNS rebinding: a foreign domain resolved to 127.0.0.1 carries its own Host header
+    if (request.host or "").lower() not in ALLOWED_HOSTS:
+        abort(403)
+    # 3. CSRF: state-changing requests must come from this app's own page
+    if request.method not in SAFE_METHODS:
+        origin = request.headers.get("Origin")
+        if origin is not None and origin.lower() not in ALLOWED_ORIGINS:
+            abort(403)
+        if request.headers.get("Sec-Fetch-Site", "same-origin") not in ("same-origin", "none"):
+            abort(403)
+
+
+@app.after_request
+def security_headers(resp):
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["X-Frame-Options"] = "DENY"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    resp.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+    return resp
 model, preprocess, tokenizer = load_model()
 state = {}
 job = {"running": False, "log": [], "error": None}
@@ -410,10 +443,10 @@ def serve(on_ready=None):
     logging.getLogger("werkzeug").setLevel(logging.WARNING)  # hide per-request access logs
     load_index()
     load_concepts()
-    print(f"画像検索サーバー起動完了: http://127.0.0.1:{PORT}", flush=True)
+    print(f"画像検索サーバー起動完了: http://{HOST}:{PORT}", flush=True)
     if on_ready:
         on_ready()
-    app.run(host="127.0.0.1", port=PORT, threaded=True)
+    app.run(host=HOST, port=PORT, threaded=True)
 
 
 if __name__ == "__main__":

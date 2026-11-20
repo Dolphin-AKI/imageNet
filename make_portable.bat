@@ -39,7 +39,8 @@ if defined UVSRC (
 
 for %%f in (app.py common.py index.py main.py requirements.txt) do copy /y "%%f" "%OUT%\" >nul
 copy /y static\index.html "%OUT%\static\" >nul
-for %%f in (start.bat settings.json README.txt) do copy /y "portable\%%f" "%OUT%\" >nul
+for %%f in (start.bat settings.json README.txt LICENSE-uv.txt) do copy /y "portable\%%f" "%OUT%\" >nul
+copy /y LICENSE "%OUT%\LICENSE.txt" >nul
 
 if exist "dist\%NAME%.zip" del "dist\%NAME%.zip"
 pushd dist

@@ -23,4 +23,6 @@
 必要なライブラリだけ自動で更新されます。data フォルダ（インデックス）はそのまま使えます。
 
 ----
-同梱の uv.exe は Astral 社の uv (https://github.com/astral-sh/uv, MIT / Apache-2.0 ライセンス) です。
+このツールは MIT ライセンスです（LICENSE.txt）。
+同梱の uv.exe は Astral 社の uv (https://github.com/astral-sh/uv) です。
+MIT ライセンスで再配布しています（LICENSE-uv.txt）。

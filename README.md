@@ -7,7 +7,7 @@
 
 ```powershell
 py -3.10 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu130
 copy settings.example.json settings.json
 copy config.example.json config.json
 ```
@@ -25,9 +25,24 @@ start.bat /reindex   # 先に差分インデックス更新
 python index.py --full   # インデックスを作り直す
 ```
 
-## exe ビルド
+## 配布
+
+### ポータブル版（おすすめ・約 15MB）
 
 ```powershell
+make_portable.bat   # -> dist\ImageSearch-portable.zip
+```
+
+ソースと [uv](https://github.com/astral-sh/uv) だけを同梱した zip を作ります。
+uv.exe はダウンロードせず手元のものを使います（`UV_EXE` → `tools\uv.exe` → PATH → `dist\uv-*.zip` の順に探索）。
+受け取った人は展開して `start.bat` を実行するだけで、初回に Python・ライブラリ
+（GPU/ドライバに合った PyTorch を自動選択）・モデルがフォルダ内にダウンロードされます。
+アップデート時は `requirements.txt` が変わったときだけライブラリが更新されます。
+
+### exe 版（約 2GB）
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-build.txt --extra-index-url https://download.pytorch.org/whl/cu130
 build.bat   # -> dist\ImageSearch\ImageSearch.exe
 ```
 
@@ -41,3 +56,5 @@ build.bat   # -> dist\ImageSearch\ImageSearch.exe
 | `main.py` | exe 用エントリーポイント |
 | `static/index.html` | フロントエンド |
 | `ImageSearch.spec` | PyInstaller 設定 |
+| `portable/` | ポータブル版の起動 bat・設定・同梱 README |
+| `make_portable.bat` | ポータブル版 zip の作成 |

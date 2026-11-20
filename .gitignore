@@ -20,6 +20,13 @@ data/
 # --- Local settings (copy from *.example.json) ---
 config.json
 settings.json
+!portable/settings.json
+
+# --- uv portable runtime (created by portable/start.bat) ---
+uv.exe
+tools/
+.python/
+.uv-cache/
 
 # --- Model cache ---
 models/

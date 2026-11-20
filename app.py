@@ -1,4 +1,5 @@
 """Local image search server. Run: python app.py  ->  http://127.0.0.1:5055"""
+import hashlib
 import json
 import re
 import subprocess
@@ -73,7 +74,11 @@ def load_index():
     # folder that directly contains each image, e.g. "r0" or "r0/arts/sketch"
     dirkey = np.array([f"r{ridx[m['root']]}/{m['rel'].rsplit('/', 1)[0]}" if "/" in m["rel"]
                        else f"r{ridx[m['root']]}" for m in meta], dtype=object)
-    state.update(meta=meta, emb=torch.from_numpy(np.ascontiguousarray(emb)).to(DEVICE),
+    # index generation: image ids are positions, so they change when the index is rebuilt.
+    # The client appends it to /thumb and /image URLs (cache busting) and sends it back
+    # with label edits so ids from a stale page are rejected.
+    gen = hashlib.sha1("\n".join(f"{m['path']}|{m['mtime']}" for m in meta).encode("utf-8")).hexdigest()[:12]
+    state.update(gen=gen, meta=meta, emb=torch.from_numpy(np.ascontiguousarray(emb)).to(DEVICE),
                  rootkey=rootkey, subkey=subkey, dirkey=dirkey, roots=roots,
                  pidx={m["path"]: i for i, m in enumerate(meta)})
     text_vec.cache_clear()
@@ -192,7 +197,15 @@ def concepts_json():
     with concept_lock:
         out = [{"name": n, "ids": concept_ids(n), "total": len(c["paths"])} for n, c in concepts.items()]
     out.sort(key=lambda c: c["name"].lower())
-    return jsonify(concepts=out)
+    return jsonify(concepts=out, gen=state["gen"])
+
+
+def check_gen(d):
+    """Reject label edits whose image ids come from an older index."""
+    if d.get("gen") != state["gen"]:
+        resp = jsonify(error="インデックスが更新されました。ページを再読み込みしてからやり直してください")
+        resp.status_code = 409
+        abort(resp)
 
 
 @app.get("/api/concepts")
@@ -206,6 +219,7 @@ def concept_add():
     name = clean_name(d.get("name"))
     if not name:
         return jsonify(error="ラベル名を入力してください"), 400
+    check_gen(d)
     ids = d["ids"] if isinstance(d.get("ids"), list) else [d.get("id", -1)]
     new = [get_meta(int(i))["path"] for i in ids]
     if not new:
@@ -220,6 +234,7 @@ def concept_add():
 @app.post("/api/concepts/remove")
 def concept_remove():
     d = request.json or {}
+    check_gen(d)
     path = get_meta(int(d.get("id", -1)))["path"]
     with concept_lock:
         key = find_name(clean_name(d.get("name")))
@@ -282,7 +297,7 @@ def info():
         subs = sorted({s.split("/", 1)[1] for s in state["subkey"][mask] if s})
         roots.append({"key": f"r{n}", "path": r, "name": Path(r).name or r,
                       "count": int(mask.sum()), "subs": subs})
-    return jsonify(count=len(state["meta"]), roots=roots)
+    return jsonify(count=len(state["meta"]), roots=roots, gen=state["gen"])
 
 
 @app.get("/api/search")

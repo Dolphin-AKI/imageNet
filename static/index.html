@@ -209,6 +209,8 @@ const PAGE = 60;
 let focusItem = null;
 let treeData = [], nodeByKey = {};
 let concepts = [], namesById = {};
+let gen = '';  // index generation; image ids are only valid within one generation
+const thumbUrl = id => `/thumb/${id}?v=${gen}`, imageUrl = id => `/image/${id}?v=${gen}`;
 
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -270,7 +272,7 @@ function appendCells(results) {
     c.className = 'cell' + (picked.has(r.id) ? ' picked' : '');
     c.dataset.id = r.id;
     c.title = r.root + ' › ' + r.rel;
-    c.innerHTML = `<img loading="lazy" src="/thumb/${r.id}" alt=""><span class="ck" title="選択"></span>` +
+    c.innerHTML = `<img loading="lazy" src="${thumbUrl(r.id)}" alt=""><span class="ck" title="選択"></span>` +
       (r.score != null ? `<span class="score">${r.score.toFixed(3)}</span>` : '');
     c.onclick = e => cellClick(e, c);
     frag.appendChild(c);
@@ -333,7 +335,7 @@ document.addEventListener('keydown', e => {
 function showFocus(q) {
   focusItem = q;
   if (!q) { $('#focus').classList.remove('on'); return; }
-  $('#fimg').src = '/image/' + q.id;
+  $('#fimg').src = imageUrl(q.id);
   $('#fpath').textContent = q.root.replace(/[\\/]+$/, '') + '\\' + q.rel.replaceAll('/', '\\') + `  (${q.w}×${q.h})`;
   $('#focus').classList.add('on');
   $('#cerr').textContent = '';
@@ -420,7 +422,7 @@ $('#folder').onchange = () => {
   if (p.has('dir')) p.delete('dir');
   go(Object.fromEntries(p));
 };
-$('#open').onclick = () => window.open('/image/' + focusItem.id, '_blank');
+$('#open').onclick = () => window.open(imageUrl(focusItem.id), '_blank');
 $('#opendir').onclick = () => go({ dir: focusItem.dir });
 $('#reveal').onclick = () => fetch('/api/reveal/' + focusItem.id, { method: 'POST' });
 window.addEventListener('hashchange', run);
@@ -493,6 +495,7 @@ setSide(store.get('side', innerWidth > 720));
 // ---------- labels ----------
 function setConcepts(d) {
   concepts = d.concepts;
+  gen = d.gen;
   namesById = {};
   for (const c of concepts) for (const id of c.ids) (namesById[id] ||= []).push(c.name);
   const dl = $('#cnames');
@@ -503,7 +506,7 @@ function setConcepts(d) {
 }
 
 async function conceptOp(url, body, errEl) {
-  try { setConcepts(await post(url, body)); return true; }
+  try { setConcepts(await post(url, { ...body, gen })); return true; }
   catch (e) { if (errEl) errEl.textContent = e.message; else alert(e.message); return false; }
 }
 
@@ -549,7 +552,7 @@ function renderConcepts() {
     const th = row.querySelector('.th');
     for (const id of c.ids) {
       const d = document.createElement('div');
-      d.innerHTML = `<img loading="lazy" src="/thumb/${id}" alt="" title="この画像の関連画像を表示"><button title="例画像から外す">×</button>`;
+      d.innerHTML = `<img loading="lazy" src="${thumbUrl(id)}" alt="" title="この画像の関連画像を表示"><button title="例画像から外す">×</button>`;
       d.querySelector('img').onclick = () => { $('#cdlg').close(); go({ sim: id }); };
       d.querySelector('button').onclick = () => conceptOp('/api/concepts/remove', { name: c.name, id });
       th.appendChild(d);

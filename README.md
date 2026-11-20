@@ -19,3 +19,9 @@ start.bat
 - [セットアップと設定](docs/setup.md)
 - [配布方法（ポータブル版 / フルパッケージ exe 版）](docs/distribution.md)
 - [構成](docs/architecture.md)
+
+## ライセンス
+
+[MIT](LICENSE)
+
+利用するモデル（open_clip / LAION）やライブラリ、ポータブル版に同梱する uv は、それぞれのライセンスに従います。
